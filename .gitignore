@@ -1,6 +1,7 @@
 # Data files
 data/
 text_processing/pos/
+text_processing/nltk_data/
 
 # Notebooks
 *.ipynb
