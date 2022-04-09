@@ -5,13 +5,13 @@ from typing import List
 from text_processing import pos_tagger
 
 
-class DeepSub:
+class Sub:
 
     """
     Class for recursive string replacement using multiple regex patterns.
     Example:
         >> text = 'O rato roeu a roupa do rei de Roma.'
-        >> cls = DeepSub(pattern1=r'(roupa)', pattern2=r'([aeiou])', repl=r"-")
+        >> cls = Sub(pattern1=r'(roupa)', pattern2=r'([aeiou])', repl=r"-")
         >> result = cls.sub(text)
         >> print(result)
         Output:
@@ -94,7 +94,7 @@ def reformat_abbreviations(text: str) -> str:
     Returns:
         str: processed version of `text`.
     """
-    pattern = DeepSub(pattern1=r"((:?[A-Z]+\.)+)", pattern2=r"(\.)", repl=r"", flags=0)
+    pattern = Sub(pattern1=r"((:?[A-Z]+\.)+)", pattern2=r"(\.)", repl=r"", flags=0)
     return pattern.sub(text)
 
 
@@ -105,7 +105,7 @@ def reformat_float(text: str) -> str:
     Returns:
         str: processed version of `text`.
     """
-    pattern = DeepSub(
+    pattern = Sub(
         pattern1=r"([0-9]*[,\.]*[0-9]+)", pattern2=r"([,\.]+)", repl="", flags=2
     )
     return pattern.sub(text)
@@ -158,11 +158,11 @@ def remove_repetitions(text: str) -> str:
         str: processed version of `text`.
     """
     # Removes repetitions of non-alphanumerical chars.
-    ptext = DeepSub(pattern1=r"([^a-záâãàéêíóôõúç0-9\s])\1+", repl=r"\1", flags=2).sub(
+    ptext = Sub(pattern1=r"([^a-záâãàéêíóôõúç0-9\s])\1+", repl=r"\1", flags=2).sub(
         text
     )
     # Removes repetitions of words separated by a space.
-    ptext = DeepSub(pattern1=r"\b(\w+)( \1\b)+", repl=r"\1", flags=2).sub(ptext)
+    ptext = Sub(pattern1=r"\b(\w+)( \1\b)+", repl=r"\1", flags=2).sub(ptext)
     return ptext
 
 
@@ -173,8 +173,8 @@ def remove_ntr(text: str) -> str:
     Returns:
         str: processed version of `text`.
     """
-    sub = DeepSub(pattern1=r"(:?(\-+[\n\r]+)+)", pattern2=r"([\-\n\r]+)", repl=r"")
-    return sub.sub(text).replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    sub = Sub(pattern1=r"(:?(\-+[\n\r]+)+)", pattern2=r"([\-\n\r]+)", repl=r"")
+    return sub.sub(text).replace("\r", " ").replace("\n", "").replace("\t", " ")
 
 
 def adjust_spacing(text: str) -> str:
@@ -185,9 +185,9 @@ def adjust_spacing(text: str) -> str:
         str: processed version of `text`.
     """
     # Create spacing around punctuation.
-    create_spaces = DeepSub(pattern1=r"([^\w\d\s]+)", repl=r" \1 ", flags=2)
+    create_spaces = Sub(pattern1=r"([^\w\d\s]+)", repl=r" \1 ", flags=2)
     # Collapse multiple spaces into only one.
-    collapse_spaces = DeepSub(pattern1=r"(\s+)", repl=r" ", flags=2)
+    collapse_spaces = Sub(pattern1=r"(\s+)", repl=r" ", flags=2)
     return collapse_spaces.sub(create_spaces.sub(text)).strip()
 
 
