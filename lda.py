@@ -5,8 +5,9 @@ from gensim.corpora import Dictionary
 from gensim.models import CoherenceModel
 from gensim.models.ldamulticore import LdaMulticore
 
-from text_processing import get_keywords_from_text
 from sklearn.base import TransformerMixin, ClassifierMixin, BaseEstimator
+
+from text_processing import get_keywords_from_text
 
 
 class LDATransformer(TransformerMixin):
