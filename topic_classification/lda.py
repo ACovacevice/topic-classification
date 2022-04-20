@@ -74,6 +74,10 @@ class LDATransformer(TransformerMixin):
         Returns:
             {tuple(data_words, corpus, dictionary)}: Transformed `X`.
         """
+
+        if not hasattr(X, "__len__"):
+            raise ValueError("`X` is not an iterable")
+
         data_words = [getKeywords(x) for x in X]
         corpus = [self.dictionary.doc2bow(doc) for doc in data_words]
         return data_words, corpus, self.dictionary
