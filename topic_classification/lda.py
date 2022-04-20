@@ -38,7 +38,12 @@ class LDATransformer(TransformerMixin):
         Returns:
             object: this fitted object.
         """
-        size = len(X)
+
+        if hasattr(X, "__len__"):
+            size = len(X)
+        else:
+            size = sum(1 for x in X)
+
         self.data_words, self.corpus = [], []
 
         print("Extracting keywords...")
