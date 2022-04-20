@@ -49,7 +49,7 @@ class LDATransformer(TransformerMixin):
         print("Extracting keywords...")
         pbar = tqdm(total=size)
         for x in X:
-            self.data_words.append(getKeywords(x))
+            self.data_words.append(getKeywords(x, **fit_params))
             pbar.update(1)
 
         self.dictionary = Dictionary(self.data_words)
@@ -63,7 +63,7 @@ class LDATransformer(TransformerMixin):
 
         return self
 
-    def transform(self, X, y=None):
+    def transform(self, X, y=None, **transform_params):
         """
         Apply transformation to `X`.
         Args:
@@ -78,7 +78,14 @@ class LDATransformer(TransformerMixin):
         if not hasattr(X, "__len__"):
             raise ValueError("`X` is not an iterable")
 
-        data_words = [getKeywords(x) for x in X]
+        data_words = []
+
+        print("Transforming input...")
+        pbar = tqdm(total=len(X))
+        for x in X:
+            data_words.append(getKeywords(x, **transform_params))
+            pbar.update(1)
+
         corpus = [self.dictionary.doc2bow(doc) for doc in data_words]
         return data_words, corpus, self.dictionary
 
