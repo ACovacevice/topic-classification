@@ -29,8 +29,15 @@ X = [
 
 y = ["matematica", "quimica", "matematica", "quimica"]
 
+
+def yielder(X):
+    for x in X:
+        yield x
+
+
 transformer = LDATransformer(no_below=1)
-X_t = transformer.fit_transform(X)
+transformer = transformer.fit(yielder(X))
+X_t = transformer.transform(yielder(X))
 
 topic_model = LDATopicModel(num_topics=2, random_state=0)
 X_topic = topic_model.fit_transform(X_t)
@@ -51,6 +58,6 @@ operações matemáticas, polinômios e estruturas algébricas. A álgebra é um
 ramos da matemática pura, juntamente com a geometria, topologia, análise, e teoria dos 
 números."""
 
-new_pred = clf.predict([new_text])
+new_pred = clf.predict(yielder([new_text]))
 
 print(new_pred)

@@ -1,3 +1,5 @@
+from itertools import tee
+
 import pandas as pd
 from gensim.corpora import Dictionary
 from gensim.models import CoherenceModel
@@ -27,7 +29,7 @@ class LDATransformer(TransformerMixin):
         self.no_above = no_above
         self.keep_n = keep_n
 
-    def fit(self, X, y=None, **fit_params):
+    def fit(self, X, y=None, **params):
         """
         Fit this object to `X`.
         Args:
@@ -39,17 +41,22 @@ class LDATransformer(TransformerMixin):
             object: this fitted object.
         """
 
+        called = params.get("__outside_call__", False)
+
+        kwargs = {k: v for k, v in params.items() if k in ["clean_first"]}
+
         if hasattr(X, "__len__"):
             size = len(X)
         else:
-            raise ValueError("`X` is not an iterable")
+            X, X_copy = tee(X)
+            size = sum(1 for _ in X_copy)
 
         self.data_words, self.corpus = [], []
 
         print("Extracting keywords...")
         pbar = tqdm(total=size)
         for x in X:
-            self.data_words.append(getKeywords(x, **fit_params))
+            self.data_words.append(getKeywords(x, **kwargs))
             pbar.update(1)
 
         self.dictionary = Dictionary(self.data_words)
@@ -61,9 +68,12 @@ class LDATransformer(TransformerMixin):
             self.corpus.append(self.dictionary.doc2bow(doc))
             pbar.update(1)
 
+        if called:
+            return self.data_words, self.corpus, self.dictionary
+
         return self
 
-    def transform(self, X, y=None, **transform_params):
+    def transform(self, X, y=None, **params):
         """
         Apply transformation to `X`.
         Args:
@@ -75,21 +85,18 @@ class LDATransformer(TransformerMixin):
             {tuple(data_words, corpus, dictionary)}: Transformed `X`.
         """
 
-        if not hasattr(X, "__len__"):
-            raise ValueError("`X` is not an iterable")
+        kwargs = {k: v for k, v in params.items() if k in ["clean_first"]}
 
         data_words = []
 
-        print("Transforming input...")
-        pbar = tqdm(total=len(X))
         for x in X:
-            data_words.append(getKeywords(x, **transform_params))
-            pbar.update(1)
+            data_words.append(getKeywords(x, **kwargs))
 
         corpus = [self.dictionary.doc2bow(doc) for doc in data_words]
+
         return data_words, corpus, self.dictionary
 
-    def fit_transform(self, X, y=None, **fit_params):
+    def fit_transform(self, X, y=None, **params):
         """
         Fit this object, then apply transformation to `X`.
         Args:
@@ -100,7 +107,7 @@ class LDATransformer(TransformerMixin):
         Returns:
             {tuple(data_words, corpus, dictionary)}: Transformed `X`.
         """
-        return super().fit_transform(X, **fit_params)
+        return self.fit(X, __outside_call__=True, **params)
 
 
 class LDATopicModel(TransformerMixin):
