@@ -42,7 +42,7 @@ class LDATransformer(TransformerMixin):
         if hasattr(X, "__len__"):
             size = len(X)
         else:
-            size = sum(1 for x in X)
+            raise ValueError("`X` is not an iterable")
 
         self.data_words, self.corpus = [], []
 

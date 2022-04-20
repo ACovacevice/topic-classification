@@ -27,11 +27,12 @@ X = [
 
 y = ["matematica", "quimica", "matematica", "quimica"]
 
+
 transformer = LDATransformer(no_below=1)
-X_trans = transformer.fit_transform(X)
+X_t = transformer.fit_transform(X)
 
 topic_model = LDATopicModel(num_topics=2, random_state=0)
-X_topic = topic_model.fit_transform(X_trans)
+X_topic = topic_model.fit_transform(X_t)
 
 clf_model = LDAClassificationModel()
 clf_model.fit(X_topic, y)
