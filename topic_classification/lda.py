@@ -6,7 +6,6 @@ from gensim.models import CoherenceModel
 from gensim.models.ldamulticore import LdaMulticore
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 from text_processing.cleaning import clean_text
-from text_processing.pt import get_keywords
 from tqdm import tqdm
 
 
@@ -16,7 +15,7 @@ class LDATransformer(TransformerMixin):
     Transformer object for Latent Dirichlet Allocation (LDA) modeling.
     """
 
-    def __init__(self, no_below=50, no_above=0.5, keep_n=100000):
+    def __init__(self, no_below=50, no_above=0.5, keep_n=100000, lang="pt"):
         """
         Args:
             no_below (int, optional):
@@ -25,10 +24,24 @@ class LDATransformer(TransformerMixin):
                 ignore vocabs with percent frequency above this value. Default is 0.5.
             keep_n (int, optional):
                 max number of vocabs to be stored in dictionary. Defaults to 100000.
+            lang (str, optional):
+                the expected language of incoming texts.
         """
         self.no_below = no_below
         self.no_above = no_above
         self.keep_n = keep_n
+        self.lang = lang
+
+        if lang == "pt":
+            from text_processing.pt import get_keywords
+        elif lang == "es":
+            from text_processing.es import get_keywords
+        elif lang == "en":
+            from text_processing.en import get_keywords
+        else:
+            raise ValueError(f"`lang` {lang} is not supported.")
+
+        self.__extractor = get_keywords
 
     def fit(self, X, y=None, **params):
         """
@@ -56,7 +69,7 @@ class LDATransformer(TransformerMixin):
         pbar = tqdm(total=size)
         for x in X:
             clean_x = clean_text(x, lowercase=True, drop_accents=True)
-            self.data_words.append(get_keywords(clean_x, min_size=3))
+            self.data_words.append(self.__extractor(clean_x, min_size=3))
             pbar.update(1)
 
         self.dictionary = Dictionary(self.data_words)
@@ -89,7 +102,7 @@ class LDATransformer(TransformerMixin):
 
         for x in X:
             clean_x = clean_text(x, lowercase=True, drop_accents=True)
-            data_words.append(get_keywords(clean_x, min_size=3))
+            data_words.append(self.__extractor(clean_x, min_size=3))
 
         corpus = [self.dictionary.doc2bow(doc) for doc in data_words]
 

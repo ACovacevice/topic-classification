@@ -1,30 +1,24 @@
 from sklearn.pipeline import Pipeline
-
 from topic_classification import LDAClassificationModel, LDATopicModel, LDATransformer
 
 X = [
-    """A matemática financeira utiliza uma série de conceitos matemáticos 
-    aplicados à análise de dados financeiros em geral. Os problemas clássicos 
-    de matemática financeira são ligados a questão do valor do dinheiro no tempo 
-    e como isso é aplicado a empréstimos, investimentos e avaliação financeira de projetos.""",
-    """Química é a ciência que estuda a composição, estrutura, propriedades da matéria, as 
-    mudanças sofridas por ela durante as reações químicas e a sua relação com a energia.""",
-    """A matemática (dos termos gregos μάθημα, transliterado máthēma, 'ciência', conhecimento' 
-    ou 'aprendizagem';[1] e μαθηματικός, transliterado mathēmatikós, 
-    'inclinado a aprender') é a ciência do raciocínio lógico e abstrato, que estuda 
-    quantidades (teoria dos números), espaço e medidas (geometria), estruturas, 
-    variações[2] e estatística.[3][4][5] Não há, porém, uma definição consensual por parte 
-    da comunidade científica.[6][7] O trabalho matemático consiste em procurar e relacionar 
-    padrões,[8][9] de modo a formular conjecturas[10] cuja veracidade ou falsidade é 
-    provada por meio de deduções rigorosas a partir de axiomas e definições. 
-    A matemática desenvolveu-se principalmente na Mesopotâmia, no Egito, na Grécia, na 
-    Índia e no Oriente Médio. A partir da Renascença, o desenvolvimento da matemática 
-    intensificou-se na Europa, quando novas descobertas científicas levaram a um crescimento 
-    acelerado que dura até os dias de hoje.""",
-    """A química orgânica é a parte do campo do conhecimento que estuda todos os compostos 
-    que têm em sua base a estrutura de átomos de carbono e outros elementos presentes em 
-    organismos vivos, tanto do reino animal quanto do reino vegetal, como hidrogênio, 
-    oxigênio, nitrogênio, entre outros.""",
+    """Mathematical finance, also known as quantitative finance and financial mathematics, 
+    is a field of applied mathematics, concerned with mathematical modeling of financial markets.""",
+    """chemistry, the science that deals with the properties, composition, and structure of 
+    substances (defined as elements and compounds), the transformations they undergo, and 
+    the energy that is released or absorbed during these processes. Every substance, whether 
+    naturally occurring or artificially produced, consists of one or more of the hundred-odd 
+    species of atoms that have been identified as elements.""",
+    """Mathematics (from Ancient Greek μάθημα (máthēma) 'knowledge, study, learning') is an 
+    area of knowledge, which includes the study of such topics as numbers (arithmetic and 
+    number theory),[1] formulas and related structures (algebra),[2] shapes and spaces in 
+    which they are contained (geometry),[1] and quantities and their changes (calculus and 
+    analysis).[3][4][5] There is no general consensus about its exact scope or 
+    epistemological status.""",
+    """Organic chemistry is the study of the structure, properties, composition, reactions, 
+    and preparation of carbon-containing compounds. Most organic compounds contain carbon 
+    and hydrogen, but they may also include any number of other elements (e.g., nitrogen, 
+    oxygen, halogens, phosphorus, silicon, sulfur).""",
 ]
 
 y = ["matematica", "quimica", "matematica", "quimica"]
@@ -35,7 +29,7 @@ def yielder(X):
         yield x
 
 
-transformer = LDATransformer(no_below=1)
+transformer = LDATransformer(no_below=1, lang="en")
 transformer = transformer.fit(yielder(X))
 X_t = transformer.transform(yielder(X))
 
@@ -53,10 +47,9 @@ clf = Pipeline(
     [("transformer", transformer), ("LDA", topic_model), ("classifier", clf_model)]
 )
 
-new_text = """Álgebra é o ramo da matemática que estuda a manipulação formal de equações, 
-operações matemáticas, polinômios e estruturas algébricas. A álgebra é um dos principais 
-ramos da matemática pura, juntamente com a geometria, topologia, análise, e teoria dos 
-números."""
+new_text = """Algebra is the study of mathematical symbols and the rules for 
+manipulating these symbols in formulas; it is a unifying thread of almost 
+all of mathematics."""
 
 new_pred = clf.predict(yielder([new_text]))
 

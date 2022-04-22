@@ -1,5 +1,4 @@
 from sklearn.pipeline import Pipeline
-
 from topic_classification import LDAClassificationModel, LDATopicModel, LDATransformer
 
 X = [
@@ -29,7 +28,7 @@ X = [
 
 y = ["matematica", "quimica", "matematica", "quimica"]
 
-transformer = LDATransformer(no_below=1)
+transformer = LDATransformer(no_below=1, lang="pt")
 X_t = transformer.fit_transform(X)
 
 topic_model = LDATopicModel(num_topics=2, random_state=0)
