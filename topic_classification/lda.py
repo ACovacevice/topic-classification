@@ -5,7 +5,8 @@ from gensim.corpora import Dictionary
 from gensim.models import CoherenceModel
 from gensim.models.ldamulticore import LdaMulticore
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
-from text_processing import getKeywords
+from text_processing.cleaning import clean_text
+from text_processing.pt import get_keywords
 from tqdm import tqdm
 
 
@@ -43,8 +44,6 @@ class LDATransformer(TransformerMixin):
 
         called = params.get("__outside_call__", False)
 
-        kwargs = {k: v for k, v in params.items() if k in ["clean_first"]}
-
         if hasattr(X, "__len__"):
             size = len(X)
         else:
@@ -56,7 +55,8 @@ class LDATransformer(TransformerMixin):
         print("Extracting keywords...")
         pbar = tqdm(total=size)
         for x in X:
-            self.data_words.append(getKeywords(x, **kwargs))
+            clean_x = clean_text(x, lowercase=True, drop_accents=True)
+            self.data_words.append(get_keywords(clean_x, min_size=3))
             pbar.update(1)
 
         self.dictionary = Dictionary(self.data_words)
@@ -85,12 +85,11 @@ class LDATransformer(TransformerMixin):
             {tuple(data_words, corpus, dictionary)}: Transformed `X`.
         """
 
-        kwargs = {k: v for k, v in params.items() if k in ["clean_first"]}
-
         data_words = []
 
         for x in X:
-            data_words.append(getKeywords(x, **kwargs))
+            clean_x = clean_text(x, lowercase=True, drop_accents=True)
+            data_words.append(get_keywords(clean_x, min_size=3))
 
         corpus = [self.dictionary.doc2bow(doc) for doc in data_words]
 
@@ -153,9 +152,9 @@ class LDATopicModel(TransformerMixin):
                     word-topic combination.
                 Alternatively default prior selecting strategies can be employed
                 by supplying a string:
-                    ’symmetric’: Uses a fixed symmetric prior of 1.0 / num_topics,
-                    ’auto’: Learns an asymmetric prior from the corpus.
-                Defaults to ’symmetric’.
+                    'symmetric': Uses a fixed symmetric prior of 1.0 / num_topics,
+                    'auto': Learns an asymmetric prior from the corpus.
+                Defaults to 'symmetric'.
             passes (int, optional):
                 Number of passes through the corpus during training. Defaults to 2.
             minimum_phi_value (float, optional):
