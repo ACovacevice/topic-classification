@@ -25,7 +25,7 @@ class LDATransformer(TransformerMixin):
             keep_n (int, optional):
                 max number of vocabs to be stored in dictionary. Defaults to 100000.
             lang (str, optional):
-                the expected language of incoming texts.
+                the expected language of incoming texts. Defaults to "pt".
         """
         self.no_below = no_below
         self.no_above = no_above
