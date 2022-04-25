@@ -1,10 +1,13 @@
 from itertools import tee
 
+import numpy as np
 import pandas as pd
 from gensim.corpora import Dictionary
 from gensim.models import CoherenceModel
 from gensim.models.ldamulticore import LdaMulticore
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
+from sklearn.metrics import f1_score
+from sklearn.pipeline import Pipeline
 from text_processing.cleaning import clean_text
 from tqdm import tqdm
 
@@ -122,7 +125,7 @@ class LDATransformer(TransformerMixin):
         return self.fit(X, __outside_call__=True, **params)
 
 
-class LDATopicModel(TransformerMixin):
+class LDAModel(TransformerMixin):
 
     """
     Parallelized Latent Dirichlet Allocation (LDA) model for topic modeling.
@@ -313,7 +316,7 @@ class LDATopicModel(TransformerMixin):
         raise ValueError("Not fit yet.")
 
 
-class LDAClassificationModel(ClassifierMixin, BaseEstimator):
+class LDAClf(ClassifierMixin, BaseEstimator):
 
     """
     Classification model based on Latent Dirichlet Allocation (LDA) topic modeling.
@@ -411,3 +414,92 @@ class LDAClassificationModel(ClassifierMixin, BaseEstimator):
         result.index.name = None
 
         return result[self.y_name]
+
+
+class LDAClassifier(ClassifierMixin, BaseEstimator):
+    def __init__(
+        self,
+        num_topics=100,
+        decay=0.5,
+        offset=64,
+        chunksize=4096,
+        eta="symmetric",
+        passes=2,
+        minimum_phi_value=0.02,
+        eval_every=500,
+        workers=None,
+        random_state=None,
+    ):
+        """
+        Args:
+            num_topics (int, optional):
+                The number of requested latent topics to be extracted
+                from the training corpus. Defaults to 100.
+            decay (float, optional):
+                A number between (0.5, 1] to weight what percentage of
+                the previous lambda value is forgotten when each new
+                document is examined. Defaults to 0.5.
+            offset (int, optional):
+                Hyper-parameter that controls how much we will slow down
+                the first steps the first few iterations. Defaults to 64.
+            chunksize (int, optional):
+                Number of documents to be used in each training chunk.
+                Defaults to 4096.
+            eta ({float, numpy.ndarray of float, list of float, str}, optional):
+                A-priori belief on topic-word distribution, this can be:
+                    scalar for a symmetric prior over topic-word distribution,
+                    1D array of length equal to num_words to denote an asymmetric
+                    user defined prior for each word, matrix of shape
+                    (num_topics, num_words) to assign a probability for each
+                    word-topic combination.
+                Alternatively default prior selecting strategies can be employed
+                by supplying a string:
+                    'symmetric': Uses a fixed symmetric prior of 1.0 / num_topics,
+                    'auto': Learns an asymmetric prior from the corpus.
+                Defaults to 'symmetric'.
+            passes (int, optional):
+                Number of passes through the corpus during training. Defaults to 2.
+            minimum_phi_value (float, optional):
+                This represents a lower bound on the term probabilities. Defaults to 0.02.
+            eval_every (int, optional):
+                Log perplexity is estimated every that many updates. Setting this to one
+                slows down training by ~2x. Defaults to 500.
+            workers (int, optional):
+                Number of workers processes to be used for parallelization.
+                If None all available cores will be used. Defaults to None.
+            random_state (int, optional):
+                Seed for pseudo-random number generation. Defaults to None.
+        """
+        self._clf = Pipeline(
+            [
+                (
+                    "LDA",
+                    LDAModel(
+                        num_topics,
+                        decay,
+                        offset,
+                        chunksize,
+                        eta,
+                        passes,
+                        minimum_phi_value,
+                        eval_every,
+                        workers,
+                        random_state,
+                    ),
+                ),
+                ("clf", LDAClf()),
+            ]
+        )
+
+    def fit(self, X, y, **fit_params):
+        self._clf.fit(X, y)
+        return self
+
+    def predict(self, X, k=-1):
+        if k > 0:
+            return self._clf.predict(X).apply(lambda x: x[:k])
+        return self._clf.predict(X)
+
+    def score(self, X, y):
+        y_pred = self._clf.predict(X).apply(lambda x: x[0][0]).values
+        return f1_score(np.array(y), y_pred, average="weighted")

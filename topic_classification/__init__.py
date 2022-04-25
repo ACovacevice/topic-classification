@@ -1,1 +1,1 @@
-from .lda import LDATransformer, LDATopicModel, LDAClassificationModel
+from .lda import LDAClassifier, LDATransformer
