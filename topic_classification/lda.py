@@ -492,14 +492,54 @@ class LDAClassifier(ClassifierMixin, BaseEstimator):
         )
 
     def fit(self, X, y, **fit_params):
+        """
+        Fit this object.
+        Args:
+            X ({tuple(data_words, corpus, dictionary)}):
+                The vocabs, their numerical mappings and dictionary to be
+                used as features.
+            y (optional):
+                Not implemented. Defaults to None.
+        Returns:
+            object: This fitted object.
+        """
         self._clf.fit(X, y)
         return self
 
     def predict(self, X, k=-1):
-        if k > 0:
+        """
+        Make a prediction about `X`.
+        Args:
+            X ({tuple(data_words, corpus, dictionary)}):
+                The vocabs, their numerical mappings and dictionary to be
+                used as features.
+            k (int, optional):
+                Number of potential prediction values.
+                Defaults to -1, i.e., all candidates will be presented.
+        Returns:
+            array: Transformed `X`.
+        """
+        if k > -1:
             return self._clf.predict(X).apply(lambda x: x[:k])
         return self._clf.predict(X)
 
-    def score(self, X, y):
+    def score(self, X, y, average="weighted"):
+        """
+        Evaluate the F1-Score metric for this model on `X`.
+        Args:
+            X ({tuple(data_words, corpus, dictionary)}):
+                The vocabs, their numerical mappings and dictionary to be
+                used as features.
+            y (array-like or iterable with shape (n_samples, 0)):
+                The true classes.
+            average (str):
+                The aggregation method for the F1-Score.
+                Options are ["weighted", "micro", "macro"].
+                Defaults to "weighted".
+        Returns:
+            float: Coherence score for this model on `X`.
+        """
+        if average not in ["weighted", "micro", "macro"]:
+            raise ValueError("`average` must be either 'micro', 'macro' or 'weighted'.")
         y_pred = self._clf.predict(X).apply(lambda x: x[0][0]).values
-        return f1_score(np.array(y), y_pred, average="weighted")
+        return f1_score(np.array(y), y_pred, average=average)
