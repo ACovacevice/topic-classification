@@ -3,12 +3,15 @@ from itertools import tee
 
 import numpy as np
 import pandas as pd
+
 from gensim.corpora import Dictionary
 from gensim.models import CoherenceModel
 from gensim.models.ldamulticore import LdaMulticore
+
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 from sklearn.metrics import f1_score
 from sklearn.pipeline import Pipeline
+
 from text_processing.cleaning import clean_text
 from text_processing.tagging import get_keywords
 from tqdm import tqdm
