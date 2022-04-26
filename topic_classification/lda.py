@@ -1,3 +1,4 @@
+import sys
 from itertools import tee
 
 import numpy as np
@@ -9,6 +10,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 from sklearn.metrics import f1_score
 from sklearn.pipeline import Pipeline
 from text_processing.cleaning import clean_text
+from text_processing.tagging import get_keywords
 from tqdm import tqdm
 
 
@@ -35,18 +37,7 @@ class LDATransformer(TransformerMixin):
         self.keep_n = keep_n
         self.lang = lang
 
-        if lang == "pt":
-            from text_processing.pt import get_keywords
-        elif lang == "es":
-            from text_processing.es import get_keywords
-        elif lang == "en":
-            from text_processing.en import get_keywords
-        else:
-            raise ValueError(f"`lang` {lang} is not supported.")
-
-        self.__extractor = get_keywords
-
-    def fit(self, X, y=None, **params):
+    def fit(self, X, y=None, length="auto", **params):
         """
         Fit this object to `X`.
         Args:
@@ -54,35 +45,42 @@ class LDATransformer(TransformerMixin):
                 Iterable of textual data.
             y (optional):
                 Not implemented. Defaults to None.
+            length (optional):
+                If "auto", infer number of inputs (takes some time for
+                long iterators). If int, assume `length` to be the size
+                of the input. Defaults to "auto".
         Returns:
             object: this fitted object.
         """
 
         called = params.get("__outside_call__", False)
 
-        if hasattr(X, "__len__"):
-            size = len(X)
+        if length == "auto":
+            if hasattr(X, "__len__"):
+                size = len(X)
+            else:
+                X, X_copy = tee(X)
+                size = sum(1 for _ in X_copy)
         else:
-            X, X_copy = tee(X)
-            size = sum(1 for _ in X_copy)
+            size = length
 
         self.data_words, self.corpus = [], []
 
         print("Extracting keywords...")
-        pbar = tqdm(total=size)
-        for x in X:
-            clean_x = clean_text(x, lowercase=True, drop_accents=True)
-            self.data_words.append(self.__extractor(clean_x, min_size=3))
-            pbar.update(1)
+        with tqdm(total=size, file=sys.stdout) as pbar:
+            for x in X:
+                clean_x = clean_text(x, lowercase=True, drop_accents=True)
+                self.data_words.append(get_keywords(clean_x, min_size=3, lang=self.lang))
+                pbar.update(1)
 
         self.dictionary = Dictionary(self.data_words)
         self.dictionary.filter_extremes(self.no_below, self.no_above, self.keep_n)
 
         print("Updating bag of words...")
-        pbar = tqdm(total=size)
-        for doc in self.data_words:
-            self.corpus.append(self.dictionary.doc2bow(doc))
-            pbar.update(1)
+        with tqdm(total=size, file=sys.stdout) as pbar:
+            for doc in self.data_words:
+                self.corpus.append(self.dictionary.doc2bow(doc))
+                pbar.update(1)
 
         if called:
             return self.data_words, self.corpus, self.dictionary
@@ -105,7 +103,7 @@ class LDATransformer(TransformerMixin):
 
         for x in X:
             clean_x = clean_text(x, lowercase=True, drop_accents=True)
-            data_words.append(self.__extractor(clean_x, min_size=3))
+            data_words.append(get_keywords(clean_x, min_size=3, lang=self.lang))
 
         corpus = [self.dictionary.doc2bow(doc) for doc in data_words]
 
