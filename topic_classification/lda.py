@@ -1,23 +1,22 @@
 import sys
 from itertools import tee
+from tempfile import mkdtemp
 
 import numpy as np
 import pandas as pd
-
 from gensim.corpora import Dictionary
 from gensim.models import CoherenceModel
 from gensim.models.ldamulticore import LdaMulticore
-
 from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 from sklearn.metrics import f1_score
 from sklearn.pipeline import Pipeline
-
+from sklearn.utils.validation import NotFittedError, check_is_fitted
 from text_processing.cleaning import clean_text
 from text_processing.tagging import get_keywords
 from tqdm import tqdm
 
 
-class LDATransformer(TransformerMixin):
+class LDATransformer(TransformerMixin, BaseEstimator):
 
     """
     Transformer object for Latent Dirichlet Allocation (LDA) modeling.
@@ -40,7 +39,14 @@ class LDATransformer(TransformerMixin):
         self.keep_n = keep_n
         self.lang = lang
 
-    def fit(self, X, y=None, length="auto", **params):
+    def __repr__(self):
+        return (
+            "<LDATransformer(no_below={0}, no_above={1}, keep_n={2}, lang={3})>".format(
+                self.no_below, self.no_above, self.keep_n, self.lang
+            )
+        )
+
+    def fit(self, X, y=None, text_is_processed=False, length="auto", **params):
         """
         Fit this object to `X`.
         Args:
@@ -48,6 +54,9 @@ class LDATransformer(TransformerMixin):
                 Iterable of textual data.
             y (optional):
                 Not implemented. Defaults to None.
+            text_is_processed (optional):
+                If True, assumes texts have been cleaned beforehand;
+                perform cleaning while fitting otherwise. Defaults to False.
             length (optional):
                 If "auto", infer number of inputs (takes some time for
                 long iterators). If int, assume `length` to be the size
@@ -67,30 +76,35 @@ class LDATransformer(TransformerMixin):
         else:
             size = length
 
-        self.data_words, self.corpus = [], []
+        self.data_words_, self.corpus_ = [], []
 
         print("Extracting keywords...")
         with tqdm(total=size, file=sys.stdout) as pbar:
             for x in X:
-                clean_x = clean_text(x, lowercase=True, drop_accents=True)
-                self.data_words.append(get_keywords(clean_x, min_size=3, lang=self.lang))
+                if text_is_processed:
+                    clean_x = x
+                else:
+                    clean_x = clean_text(x, lowercase=True, drop_accents=True)
+                self.data_words_.append(
+                    get_keywords(clean_x, min_size=3, lang=self.lang)
+                )
                 pbar.update(1)
 
-        self.dictionary = Dictionary(self.data_words)
-        self.dictionary.filter_extremes(self.no_below, self.no_above, self.keep_n)
+        self.dictionary_ = Dictionary(self.data_words_)
+        self.dictionary_.filter_extremes(self.no_below, self.no_above, self.keep_n)
 
         print("Updating bag of words...")
         with tqdm(total=size, file=sys.stdout) as pbar:
-            for doc in self.data_words:
-                self.corpus.append(self.dictionary.doc2bow(doc))
+            for doc in self.data_words_:
+                self.corpus_.append(self.dictionary_.doc2bow(doc))
                 pbar.update(1)
 
         if called:
-            return self.data_words, self.corpus, self.dictionary
+            return self.data_words_, self.corpus_, self.dictionary_
 
         return self
 
-    def transform(self, X, y=None, **params):
+    def transform(self, X, y=None, text_is_processed=False, **params):
         """
         Apply transformation to `X`.
         Args:
@@ -98,19 +112,27 @@ class LDATransformer(TransformerMixin):
                 Iterable of textual data.
             y (optional):
                 Not implemented. Defaults to None.
+            text_is_processed (optional):
+                If True, assumes texts have been cleaned beforehand;
+                perform cleaning while fitting otherwise. Defaults to False.
         Returns:
             {tuple(data_words, corpus, dictionary)}: Transformed `X`.
         """
 
+        check_is_fitted(self)
+
         data_words = []
 
         for x in X:
-            clean_x = clean_text(x, lowercase=True, drop_accents=True)
+            if text_is_processed:
+                clean_x = x
+            else:
+                clean_x = clean_text(x, lowercase=True, drop_accents=True)
             data_words.append(get_keywords(clean_x, min_size=3, lang=self.lang))
 
-        corpus = [self.dictionary.doc2bow(doc) for doc in data_words]
+        corpus = [self.dictionary_.doc2bow(doc) for doc in data_words]
 
-        return data_words, corpus, self.dictionary
+        return data_words, corpus, self.dictionary_
 
     def fit_transform(self, X, y=None, **params):
         """
@@ -126,7 +148,7 @@ class LDATransformer(TransformerMixin):
         return self.fit(X, __outside_call__=True, **params)
 
 
-class LDAModel(TransformerMixin):
+class LDATopicModel(TransformerMixin, BaseEstimator):
 
     """
     Parallelized Latent Dirichlet Allocation (LDA) model for topic modeling.
@@ -145,46 +167,6 @@ class LDAModel(TransformerMixin):
         workers=None,
         random_state=None,
     ):
-        """
-        Args:
-            num_topics (int, optional):
-                The number of requested latent topics to be extracted
-                from the training corpus. Defaults to 100.
-            decay (float, optional):
-                A number between (0.5, 1] to weight what percentage of
-                the previous lambda value is forgotten when each new
-                document is examined. Defaults to 0.5.
-            offset (int, optional):
-                Hyper-parameter that controls how much we will slow down
-                the first steps the first few iterations. Defaults to 64.
-            chunksize (int, optional):
-                Number of documents to be used in each training chunk.
-                Defaults to 4096.
-            eta ({float, numpy.ndarray of float, list of float, str}, optional):
-                A-priori belief on topic-word distribution, this can be:
-                    scalar for a symmetric prior over topic-word distribution,
-                    1D array of length equal to num_words to denote an asymmetric
-                    user defined prior for each word, matrix of shape
-                    (num_topics, num_words) to assign a probability for each
-                    word-topic combination.
-                Alternatively default prior selecting strategies can be employed
-                by supplying a string:
-                    'symmetric': Uses a fixed symmetric prior of 1.0 / num_topics,
-                    'auto': Learns an asymmetric prior from the corpus.
-                Defaults to 'symmetric'.
-            passes (int, optional):
-                Number of passes through the corpus during training. Defaults to 2.
-            minimum_phi_value (float, optional):
-                This represents a lower bound on the term probabilities. Defaults to 0.02.
-            eval_every (int, optional):
-                Log perplexity is estimated every that many updates. Setting this to one
-                slows down training by ~2x. Defaults to 500.
-            workers (int, optional):
-                Number of workers processes to be used for parallelization.
-                If None all available cores will be used. Defaults to None.
-            random_state (int, optional):
-                Seed for pseudo-random number generation. Defaults to None.
-        """
         self.num_topics = num_topics
         self.decay = decay
         self.offset = offset
@@ -196,20 +178,17 @@ class LDAModel(TransformerMixin):
         self.workers = workers
         self.random_state = random_state
 
+    def __repr__(self):
+        string = "<LDATopicModel(num_topics={0}, workers={1}, random_state={2})>"
+        return string.format(
+            self.__dict__["num_topics"],
+            self.__dict__["workers"],
+            self.__dict__["random_state"],
+        )
+
     def fit(self, X, y=None, **fit_params):
-        """
-        Fit this object.
-        Args:
-            X ({tuple(data_words, corpus, dictionary)}):
-                The vocabs, their numerical mappings and dictionary to be
-                used as features.
-            y (optional):
-                Not implemented. Defaults to None.
-        Returns:
-            object: This fitted object.
-        """
         data_words, corpus, dictionary = X
-        self.LDA = LdaMulticore(
+        self.LDA_ = LdaMulticore(
             num_topics=self.num_topics,
             id2word=dictionary,
             corpus=corpus,
@@ -225,57 +204,25 @@ class LDAModel(TransformerMixin):
             random_state=self.random_state,
             per_word_topics=True,
         )
-        self._coherence = self.score(X)
+        self.coherence_ = self.score(X)
         return self
 
     def transform(self, X):
-        """
-        Apply transformation to `X`.
-        Args:
-            X ({tuple(data_words, corpus, dictionary)}):
-                The vocabs, their numerical mappings and dictionary to be
-                used as features.
-            y (optional):
-                Not implemented. Defaults to None.
-        Returns:
-            array: Transformed `X`.
-        """
+        check_is_fitted(self)
         _, corpus, _ = X
 
         def func():
             for doc in corpus:
-                topics = self.LDA.get_document_topics(doc, per_word_topics=False)
+                topics = self.LDA_.get_document_topics(doc, per_word_topics=False)
                 pred = [(g + 1, p) for g, p in topics]
                 yield sorted(pred, key=lambda x: -x[1])
 
         return pd.Series(list(func()), name="Group")
 
     def predict(self, X):
-        """
-        Make a prediction about `X`.
-        Args:
-            X ({tuple(data_words, corpus, dictionary)}):
-                The vocabs, their numerical mappings and dictionary to be
-                used as features.
-            y (optional):
-                Not implemented. Defaults to None.
-        Returns:
-            array: Transformed `X`.
-        """
         return self.transform(X)
 
     def fit_transform(self, X, y=None, **fit_params):
-        """
-        Fit this object, then apply transformation to `X`.
-        Args:
-            X ({tuple(data_words, corpus, dictionary)}):
-                The vocabs, their numerical mappings and dictionary to be
-                used as features.
-            y (optional):
-                Not implemented. Defaults to None.
-        Returns:
-            array: Transformed `X`.
-        """
         return super().fit_transform(X, **fit_params)
 
     def score(self, X, window_size=110, topn=100):
@@ -297,7 +244,7 @@ class LDAModel(TransformerMixin):
         """
         data_words, corpus, dictionary = X
         return CoherenceModel(
-            model=self.LDA,
+            model=self.LDA_,
             texts=data_words,
             corpus=corpus,
             dictionary=dictionary,
@@ -312,30 +259,20 @@ class LDAModel(TransformerMixin):
         Returns:
             float: Coherence score for this model.
         """
-        if hasattr(self, "_coherence"):
-            return self._coherence
-        raise ValueError("Not fit yet.")
+        check_is_fitted(self)
+        return self.coherence_
 
 
-class LDAClf(ClassifierMixin, BaseEstimator):
+class LDALabelModel(ClassifierMixin, BaseEstimator):
 
     """
-    Classification model based on Latent Dirichlet Allocation (LDA) topic modeling.
+    Classification component which maps latent LDA groups to actual labels.
     """
+
+    def __repr__(self):
+        return "<LDALabelModel()>"
 
     def fit(self, X, y, **fit_params):
-
-        """
-        Fit this object.
-        Args:
-            X (pd.Series):
-                Array of lists containing tuples (LDA_topic, probability).
-                Example: [[(0, 0.5), (1, 0.5)], [(0, 0.75), (1, 0.25)]].
-            y (pd.Series):
-                Array of target labels.
-        Returns:
-            object: This fitted object.
-        """
 
         if not isinstance(X, pd.Series):
             X_copy = pd.Series(X, name="Group")
@@ -361,36 +298,19 @@ class LDAClf(ClassifierMixin, BaseEstimator):
         result[f"P({y_copy.name}|Group)"] = result["Count"] / result["Sum"]
         result.drop(["Count", "Sum"], axis=1, inplace=True)
 
-        self.map = result
+        self.map_ = result
 
-        for name in self.map:
+        for name in self.map_:
             if name.endswith("|Group)"):
-                self.p_name = name
+                self.p_name_ = name
             elif name != "Group":
-                self.y_name = name
+                self.y_name_ = name
 
         return self
 
     def predict(self, X, k=-1):
 
-        """
-        Make class predictions about `X`.
-        Args:
-            X (array-like or iterable with shape (n_samples, 0)):
-                Array of lists containing tuples (LDA_topic, probability).
-                Example: [[(0, 0.5), (1, 0.5)], [(0, 0.75), (1, 0.25)]].
-            k (int, optional):
-                Number of potential prediction values.
-                Defaults to -1, i.e., all candidates will be presented.
-        Returns:
-            list: prediction classes for `X`.
-        """
-
-        if not hasattr(self, "p_name"):
-            raise ValueError("Not fit yet.")
-
-        if not hasattr(self, "y_name"):
-            raise ValueError("Not fit yet.")
+        check_is_fitted(self)
 
         def retrieve(x):
             new_x = sorted(x, key=lambda x: -x[1])
@@ -402,24 +322,31 @@ class LDAClf(ClassifierMixin, BaseEstimator):
             new_X.reset_index(drop=False, inplace=True)
             return new_X
 
-        merged = pd.merge(unstack(X), self.map, on="Group", how="inner")
-        merged["Prob"] = merged["P(Group)"] * merged[self.p_name]
+        merged = pd.merge(unstack(X), self.map_, on="Group", how="inner")
+        merged["Prob"] = merged["P(Group)"] * merged[self.p_name_]
 
-        result = merged.groupby(["index", self.y_name]).agg(Prob=("Prob", "sum"))
+        result = merged.groupby(["index", self.y_name_]).agg(Prob=("Prob", "sum"))
         result.reset_index(drop=False, inplace=True)
 
-        result["Pred"] = result[[self.y_name, "Prob"]].apply(
+        result["Pred"] = result[[self.y_name_, "Prob"]].apply(
             lambda x: (x[0], x[1]), axis=1
         )
-        result = result.groupby("index").agg(**{self.y_name: ("Pred", retrieve)})
+        result = result.groupby("index").agg(**{self.y_name_: ("Pred", retrieve)})
         result.index.name = None
 
-        return result[self.y_name]
+        return result[self.y_name_]
 
 
-class LDAClassifier(ClassifierMixin, BaseEstimator):
+class LDAClassifier(Pipeline, BaseEstimator):
+
+    """Classification model based on Latent Dirichlet Allocation (LDA) topic modeling."""
+
     def __init__(
         self,
+        no_below=50,
+        no_above=0.5,
+        keep_n=100000,
+        lang="pt",
         num_topics=100,
         decay=0.5,
         offset=64,
@@ -431,51 +358,30 @@ class LDAClassifier(ClassifierMixin, BaseEstimator):
         workers=None,
         random_state=None,
     ):
-        """
-        Args:
-            num_topics (int, optional):
-                The number of requested latent topics to be extracted
-                from the training corpus. Defaults to 100.
-            decay (float, optional):
-                A number between (0.5, 1] to weight what percentage of
-                the previous lambda value is forgotten when each new
-                document is examined. Defaults to 0.5.
-            offset (int, optional):
-                Hyper-parameter that controls how much we will slow down
-                the first steps the first few iterations. Defaults to 64.
-            chunksize (int, optional):
-                Number of documents to be used in each training chunk.
-                Defaults to 4096.
-            eta ({float, numpy.ndarray of float, list of float, str}, optional):
-                A-priori belief on topic-word distribution, this can be:
-                    scalar for a symmetric prior over topic-word distribution,
-                    1D array of length equal to num_words to denote an asymmetric
-                    user defined prior for each word, matrix of shape
-                    (num_topics, num_words) to assign a probability for each
-                    word-topic combination.
-                Alternatively default prior selecting strategies can be employed
-                by supplying a string:
-                    'symmetric': Uses a fixed symmetric prior of 1.0 / num_topics,
-                    'auto': Learns an asymmetric prior from the corpus.
-                Defaults to 'symmetric'.
-            passes (int, optional):
-                Number of passes through the corpus during training. Defaults to 2.
-            minimum_phi_value (float, optional):
-                This represents a lower bound on the term probabilities. Defaults to 0.02.
-            eval_every (int, optional):
-                Log perplexity is estimated every that many updates. Setting this to one
-                slows down training by ~2x. Defaults to 500.
-            workers (int, optional):
-                Number of workers processes to be used for parallelization.
-                If None all available cores will be used. Defaults to None.
-            random_state (int, optional):
-                Seed for pseudo-random number generation. Defaults to None.
-        """
-        self._clf = Pipeline(
+
+        self.no_below = no_below
+        self.no_above = no_above
+        self.keep_n = keep_n
+        self.lang = lang
+        self.num_topics = num_topics
+        self.decay = decay
+        self.offset = offset
+        self.chunksize = chunksize
+        self.eta = eta
+        self.passes = passes
+        self.minimum_phi_value = minimum_phi_value
+        self.eval_every = eval_every
+        self.workers = workers
+        self.random_state = random_state
+
+        cachedir = mkdtemp()
+
+        super().__init__(
             [
+                ("transformer", LDATransformer(no_below, no_above, keep_n, lang)),
                 (
                     "LDA",
-                    LDAModel(
+                    LDATopicModel(
                         num_topics,
                         decay,
                         offset,
@@ -488,32 +394,35 @@ class LDAClassifier(ClassifierMixin, BaseEstimator):
                         random_state,
                     ),
                 ),
-                ("clf", LDAClf()),
-            ]
+                ("classifier", LDALabelModel()),
+            ],
+            memory=cachedir,
         )
 
-    def fit(self, X, y, **fit_params):
-        """
-        Fit this object.
-        Args:
-            X ({tuple(data_words, corpus, dictionary)}):
-                The vocabs, their numerical mappings and dictionary to be
-                used as features.
-            y (optional):
-                Not implemented. Defaults to None.
-        Returns:
-            object: This fitted object.
-        """
-        self._clf.fit(X, y)
-        return self
+    def __repr__(self):
+        return "<LDAClassifier(%s)>" % ", ".join(
+            [
+                f"{k}={v}"
+                for k, v in self.__dict__.items()
+                if k
+                in [
+                    "no_below",
+                    "no_above",
+                    "keep_n",
+                    "num_topics",
+                    "lang",
+                    "workers",
+                    "random_state",
+                ]
+            ]
+        )
 
     def predict(self, X, k=-1):
         """
         Make a prediction about `X`.
         Args:
-            X ({tuple(data_words, corpus, dictionary)}):
-                The vocabs, their numerical mappings and dictionary to be
-                used as features.
+            X (array-like or iterable with shape (n_samples, 0)):
+                Texts to be processed.
             k (int, optional):
                 Number of potential prediction values.
                 Defaults to -1, i.e., all candidates will be presented.
@@ -521,16 +430,15 @@ class LDAClassifier(ClassifierMixin, BaseEstimator):
             array: Transformed `X`.
         """
         if k > -1:
-            return self._clf.predict(X).apply(lambda x: x[:k])
-        return self._clf.predict(X)
+            return super().predict(X).apply(lambda x: x[:k])
+        return super().predict(X)
 
     def score(self, X, y, average="weighted"):
         """
         Evaluate the F1-Score metric for this model on `X`.
         Args:
-            X ({tuple(data_words, corpus, dictionary)}):
-                The vocabs, their numerical mappings and dictionary to be
-                used as features.
+            X (array-like or iterable with shape (n_samples, 0)):
+                Texts to be processed.
             y (array-like or iterable with shape (n_samples, 0)):
                 The true classes.
             average (str):
@@ -538,9 +446,31 @@ class LDAClassifier(ClassifierMixin, BaseEstimator):
                 Options are ["weighted", "micro", "macro"].
                 Defaults to "weighted".
         Returns:
-            float: Coherence score for this model on `X`.
+            float: F1-score metric for this model on `X`.
         """
         if average not in ["weighted", "micro", "macro"]:
             raise ValueError("`average` must be either 'micro', 'macro' or 'weighted'.")
-        y_pred = self._clf.predict(X).apply(lambda x: x[0][0]).values
+        y_pred = super().predict(X).apply(lambda x: x[0][0]).values
         return f1_score(np.array(y), y_pred, average=average)
+
+    def update_num_topics(self, num_topics):
+        """
+        Updates the number of topics expected from the LDATopicModel component.
+        Warning: this erases all fit data from both LDATopicModel and LDALabelModel components.
+        Args:
+            num_topics (int):
+                The new argument value for `num_topics`.
+        Returns:
+            None.
+        """
+        self.num_topics = num_topics
+        self.named_steps["LDA"].num_topics = num_topics
+        try:
+            check_is_fitted(self)
+            del self.named_steps["LDA"].LDA_
+            del self.named_steps["LDA"].coherence_
+            del self.named_steps["classifier"].map_
+            del self.named_steps["classifier"].y_name_
+            del self.named_steps["classifier"].p_name_
+        except NotFittedError:
+            pass
