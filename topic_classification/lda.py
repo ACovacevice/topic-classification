@@ -1,6 +1,8 @@
+import os
 import sys
 from itertools import tee
-from tempfile import mkdtemp
+from tempfile import mkdtemp, mkstemp
+from typing import Generator
 
 import numpy as np
 import pandas as pd
@@ -11,8 +13,8 @@ from sklearn.base import BaseEstimator, ClassifierMixin, TransformerMixin
 from sklearn.metrics import f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.utils.validation import NotFittedError, check_is_fitted
-from text_processing.cleaning import clean_text
-from text_processing.tagging import get_keywords
+from tolkien.cleaning import clean_text
+from tolkien.tagging import get_keywords
 from tqdm import tqdm
 
 
@@ -46,7 +48,14 @@ class LDATransformer(TransformerMixin, BaseEstimator):
             )
         )
 
-    def fit(self, X, y=None, text_is_processed=False, length="auto", **params):
+    def fit(
+        self,
+        X,
+        y=None,
+        text_is_processed=False,
+        length="auto",
+        **params,
+    ):
         """
         Fit this object to `X`.
         Args:
@@ -59,48 +68,58 @@ class LDATransformer(TransformerMixin, BaseEstimator):
                 perform cleaning while fitting otherwise. Defaults to False.
             length (optional):
                 If "auto", infer number of inputs (takes some time for
-                long iterators). If int, assume `length` to be the size
+                long iterables). If int, assume `length` to be the size
                 of the input. Defaults to "auto".
         Returns:
             object: this fitted object.
         """
 
-        called = params.get("__outside_call__", False)
+        called = params.get("__external_call__", False)
 
         if length == "auto":
             if hasattr(X, "__len__"):
                 size = len(X)
-            else:
+            elif isinstance(X, Generator):
                 X, X_copy = tee(X)
                 size = sum(1 for _ in X_copy)
+            else:
+                raise TypeError("Could not infer object size. Is it an iterable?")
         else:
             size = length
 
-        self.data_words_, self.corpus_ = [], []
+        self.dictionary_, corpus = Dictionary(), []
+        description, file = mkstemp()
 
         print("Extracting keywords...")
         with tqdm(total=size, file=sys.stdout) as pbar:
-            for x in X:
-                if text_is_processed:
-                    clean_x = x
-                else:
-                    clean_x = clean_text(x, lowercase=True, drop_accents=True)
-                self.data_words_.append(
-                    get_keywords(clean_x, min_size=3, lang=self.lang)
-                )
-                pbar.update(1)
+            with open(file, "w+") as f:
+                for x in X:
+                    if text_is_processed:
+                        clean_x = x
+                    else:
+                        clean_x = clean_text(x, lowercase=True, drop_accents=True)
+                    doc = get_keywords(clean_x, min_size=3, lang=self.lang)
+                    self.dictionary_.add_documents([doc])
+                    f.write("|".join(doc) + "\n")
+                    pbar.update(1)
 
-        self.dictionary_ = Dictionary(self.data_words_)
         self.dictionary_.filter_extremes(self.no_below, self.no_above, self.keep_n)
+
+        def doc_reader(filepath):
+            with open(filepath, "r") as f:
+                for row in f.readlines():
+                    yield row.replace("\n", "").split("|")
 
         print("Updating bag of words...")
         with tqdm(total=size, file=sys.stdout) as pbar:
-            for doc in self.data_words_:
-                self.corpus_.append(self.dictionary_.doc2bow(doc))
+            for doc in doc_reader(file):
+                corpus.append(self.dictionary_.doc2bow(doc))
                 pbar.update(1)
 
+        os.close(description)
+
         if called:
-            return self.data_words_, self.corpus_, self.dictionary_
+            return corpus, self.dictionary_
 
         return self
 
@@ -116,23 +135,21 @@ class LDATransformer(TransformerMixin, BaseEstimator):
                 If True, assumes texts have been cleaned beforehand;
                 perform cleaning while fitting otherwise. Defaults to False.
         Returns:
-            {tuple(data_words, corpus, dictionary)}: Transformed `X`.
+            {tuple(corpus, dictionary)}: Transformed `X`.
         """
 
         check_is_fitted(self)
-
-        data_words = []
+        corpus = []
 
         for x in X:
             if text_is_processed:
                 clean_x = x
             else:
                 clean_x = clean_text(x, lowercase=True, drop_accents=True)
-            data_words.append(get_keywords(clean_x, min_size=3, lang=self.lang))
+            doc = get_keywords(clean_x, min_size=3, lang=self.lang)
+            corpus.append(self.dictionary_.doc2bow(doc))
 
-        corpus = [self.dictionary_.doc2bow(doc) for doc in data_words]
-
-        return data_words, corpus, self.dictionary_
+        return corpus, self.dictionary_
 
     def fit_transform(self, X, y=None, **params):
         """
@@ -143,9 +160,9 @@ class LDATransformer(TransformerMixin, BaseEstimator):
             y (optional):
                 Not implemented. Defaults to None.
         Returns:
-            {tuple(data_words, corpus, dictionary)}: Transformed `X`.
+            {tuple(corpus, dictionary)}: Transformed `X`.
         """
-        return self.fit(X, __outside_call__=True, **params)
+        return self.fit(X, __external_call__=True, **params)
 
 
 class LDATopicModel(TransformerMixin, BaseEstimator):
@@ -187,7 +204,7 @@ class LDATopicModel(TransformerMixin, BaseEstimator):
         )
 
     def fit(self, X, y=None, **fit_params):
-        data_words, corpus, dictionary = X
+        corpus, dictionary = X
         self.LDA_ = LdaMulticore(
             num_topics=self.num_topics,
             id2word=dictionary,
@@ -204,12 +221,11 @@ class LDATopicModel(TransformerMixin, BaseEstimator):
             random_state=self.random_state,
             per_word_topics=True,
         )
-        self.coherence_ = self.score(X)
         return self
 
     def transform(self, X):
         check_is_fitted(self)
-        _, corpus, _ = X
+        corpus, _ = X
 
         def func():
             for doc in corpus:
@@ -224,43 +240,6 @@ class LDATopicModel(TransformerMixin, BaseEstimator):
 
     def fit_transform(self, X, y=None, **fit_params):
         return super().fit_transform(X, **fit_params)
-
-    def score(self, X, window_size=110, topn=100):
-        """
-        Evaluate the coherence metric for this model on `X`.
-        Args:
-            X ({tuple(data_words, corpus, dictionary)}):
-                The vocabs, their numerical mappings and dictionary to be
-                used as features.
-            window_size (int, optional):
-                The size of the window to be used for coherence measures
-                using boolean sliding window as their probability estimator.
-                Defaults to 110.
-            topn (int, optional):
-                Integer corresponding to the number of top words to be extracted
-                from each topic. Defaults to 100.
-        Returns:
-            float: Coherence score for this model on `X`.
-        """
-        data_words, corpus, dictionary = X
-        return CoherenceModel(
-            model=self.LDA_,
-            texts=data_words,
-            corpus=corpus,
-            dictionary=dictionary,
-            coherence="c_v",
-            window_size=window_size,
-            topn=topn,
-        ).get_coherence()
-
-    def get_coherence(self):
-        """
-        Get the coherence metric scored by this model during training.
-        Returns:
-            float: Coherence score for this model.
-        """
-        check_is_fitted(self)
-        return self.coherence_
 
 
 class LDALabelModel(ClassifierMixin, BaseEstimator):
@@ -400,21 +379,14 @@ class LDAClassifier(Pipeline, BaseEstimator):
         )
 
     def __repr__(self):
-        return "<LDAClassifier(%s)>" % ", ".join(
-            [
-                f"{k}={v}"
-                for k, v in self.__dict__.items()
-                if k
-                in [
-                    "no_below",
-                    "no_above",
-                    "keep_n",
-                    "num_topics",
-                    "lang",
-                    "workers",
-                    "random_state",
-                ]
-            ]
+        string = "<LDAClassifier(no_below={0}, no_above={1}, keep_n={2}, lang={3}, num_topics={4}, random_state={5})>"
+        return string.format(
+            self.__dict__["no_below"],
+            self.__dict__["no_above"],
+            self.__dict__["keep_n"],
+            self.__dict__["lang"],
+            self.__dict__["num_topics"],
+            self.__dict__["random_state"],
         )
 
     def predict(self, X, k=-1):
@@ -468,7 +440,6 @@ class LDAClassifier(Pipeline, BaseEstimator):
         try:
             check_is_fitted(self)
             del self.named_steps["LDA"].LDA_
-            del self.named_steps["LDA"].coherence_
             del self.named_steps["classifier"].map_
             del self.named_steps["classifier"].y_name_
             del self.named_steps["classifier"].p_name_
