@@ -1,5 +1,9 @@
-from sklearn.pipeline import Pipeline
-from topic_classification import LDAClassifier, LDATransformer
+from topic_classification import (
+    DictTransformer,
+    DocTransformer,
+    LDAClassifier,
+    LDATransformer,
+)
 
 X = [
     """A matemática financeira utiliza uma série de conceitos matemáticos 
@@ -28,28 +32,36 @@ X = [
 
 y = ["matematica", "quimica", "matematica", "quimica"]
 
-transformer = LDATransformer(no_below=1, lang="pt")
-X_t = transformer.fit_transform(X)
+model = LDAClassifier(
+    DocTransformer(),
+    DictTransformer(no_below=1, no_above=1),
+    LDATransformer(num_topics=3, random_state=0),
+)
 
-clf_model = LDAClassifier(num_topics=3, random_state=0)
-clf_model.fit(X_t, y)
+model = model.fit(X, y)
+preds = model.predict(X, k=1)
+score = model.score(X, y)
 
-preds = clf_model.predict(X_t)
+print()
+print("Predictions:")
+print("    y_true{0:>9}y_pred".format(""))
+for y_true, y_pred in zip(y, preds):
+    print("    {0}{1:>15}".format(y_true, y_pred[0]))
 
-print(preds)
-
-preds = clf_model.predict(X_t, k=1)
-
-print(preds)
-print("Weighted F1:", clf_model.score(X_t, y))
-
-clf = Pipeline([("transformer", transformer), ("classifier", clf_model)])
+print()
+print(f"Train set weighted F1-Score: {score}")
 
 new_text = """Álgebra é o ramo da matemática que estuda a manipulação formal de equações,
 operações matemáticas, polinômios e estruturas algébricas. A álgebra é um dos principais
 ramos da matemática pura, juntamente com a geometria, topologia, análise, e teoria dos
 números."""
 
-new_pred = clf.predict([new_text])
+new_preds = model.predict([new_text], k=1)
+new_topics = model.predict_topic([new_text], k=3)
 
-print(new_pred)
+print()
+print("New input:\n   ", new_text)
+print()
+print("Prediction:\n   ", new_preds[0][0])
+print()
+print("Latent topics, in order of relevance:\n   ", new_topics)
