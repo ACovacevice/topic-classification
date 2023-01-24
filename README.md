@@ -57,10 +57,12 @@ being classified as either `Mathematics` or `Biology` is given by Bayes' Theorem
 
 Each probability P(<i>Label</i>|<i>Group</i>) is computed and stored as model parameters during the training step.
 
-Predictions tend to be more precise the richer the vocabulary is. However, one must me careful to optimize for the number of latent groups in order to find the best model.
+Predictions tend to be more precise the richer the vocabulary is. However, one must optimize for the number of latent groups to obtain the best model.
 
 ## Usage
 
 Please, refer to our <a href="https://github.com/ACovacevice/topic-classification/tree/main/examples">examples</a>.
+
+Be sure to tune the parameters of `DictTransformer` to adjust the size of the vocabulary you intend on using.
 
 You can visualize the latent groups created in a nice interface by using <a href="https://pypi.org/project/pyLDAvis/">pyLDAvis</a>.
