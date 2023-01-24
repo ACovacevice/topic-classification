@@ -30,7 +30,7 @@ the algorithm would be able to assert the co-occurrence of the words
 - `Mathematics`, `numbers`, `formulas`, `algebra`, and `geometry` (Group 1);
 - `Biology`, `life`, `natural`, `organisms`, and `cells` (Group 2);
 
-providing two distinct <b>latent groups</b> as the result -- each being described by their words (so it might not be so "latent" after all).
+providing two distinct <i>latent groups</i> as the result -- each being described by their words (so it might not be so "latent" after all).
 
 It consists of an unsupervised learning process. However, we can make a supervised classification model by including labeled data in the training process.
 
