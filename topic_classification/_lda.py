@@ -60,7 +60,7 @@ class LDATransformer(TransformerMixin, BaseEstimator):
                 Number of workers processes to be used for parallelization.
                 If None, all available cores (as estimated by workers=cpu_count()-1 will be used.
                 Note however that for hyper-threaded CPUs, this estimation returns a too high
-                number – set workers directly to the number of your real cores (not hyperthreads)
+                number. Set workers directly to the number of your real cores (not hyperthreads)
                 minus one, for optimal performance. Defaults to None.
             random_state ({np.random.RandomState, int}, optional):
                 Either a randomState object or a seed to generate one.

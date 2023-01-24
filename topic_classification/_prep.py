@@ -1,28 +1,23 @@
 import re
+import string
+from typing import List
 
 from sklearn.preprocessing import FunctionTransformer
 
 
-def get_unigrams(docs):
-
+def get_unigrams(corpus: List[str]) -> List[List[str]]:
     """
-    For each document in `docs`, list unigram tokens sized above 2.
+    Extract unigrams (sizes 2+) from `corpus`.
     Args:
-        docs (list):
-            Array or iterable containing documents (strings).
+        corpus (List[str]): corpus used to fit the LDA model.
     Returns:
-        list:
-            List of lists containing the tokens found.
+        List[List[str]]: token lists for each document in the corpus.
     """
-
-    def unigrams(doc):
-        tokens = re.findall(r"([\w-]+)", doc.lower())
-        return [token for token in tokens if len(token) > 2]
-
-    result = list()
-    for doc in docs:
-        result.append(unigrams(doc))
-    return result
+    res, punct_dict = [], str.maketrans("", "", string.punctuation)
+    for doc in corpus:
+        tokens = doc.lower().translate(punct_dict).split()
+        res.append([token for token in tokens if len(token) > 2])
+    return res
 
 
 class DocTransformer(FunctionTransformer):
