@@ -52,9 +52,9 @@ of generalizations of arithmetic operations.
 
 being classified as either `Mathematics` or `Biology` is given by Bayes' Theorem:
 
-- <i>P(Mathematics) = P(Mathematics|Group 1) _ P(Group 1) + P(Mathematics|Group 2) _ P(Group 2)</i>
+- <i>P(Mathematics) = P(Mathematics|Group 1) . P(Group 1) + P(Mathematics|Group 2) . P(Group 2)</i>
 
-- <i>P(Biology) = P(Biology|Group 1) _ P(Group 1) + P(Biology|Group 2) _ P(Group 2)</i>
+- <i>P(Biology) = P(Biology|Group 1) . P(Group 1) + P(Biology|Group 2) . P(Group 2)</i>
 
 Each probability P(<i>Label</i>|<i>Group</i>) is computed and stored as model parameters during the training step.
 
