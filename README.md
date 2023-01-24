@@ -1,11 +1,12 @@
 # LDA for Document Classification
 
-This package consists of a textual document classification model that is based on the <a href="https://radimrehurek.com/gensim/models/ldamulticore.html">Latent Dirichlet Allocation (LDA)</a> algorithm for topic modeling.
-It is a prototype that is memory-intensive, so it is not recommended for huge datasets.
+Textual document classification model based on the <a href="https://radimrehurek.com/gensim/models/ldamulticore.html">Latent Dirichlet Allocation (LDA)</a> algorithm for topic modeling.
+This prototype is not recommended for huge datasets.
 
 ## Methodology
 
-The LDA algorithm allows for the estimation of <b>latent groups</b> based on the co-occurrence of tokens (words or n-grams) found in textual data. For example, by inputting the two following documents
+The LDA algorithm allows for the estimation of <i>latent groups</i> (or topics) based on the co-occurrence of tokens (words or n-grams) found in textual data.
+For example, by inputting the two following documents
 
 ```python
 corpus = [
